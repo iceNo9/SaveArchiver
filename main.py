@@ -2,25 +2,68 @@ import os
 import shutil
 import sys
 import tkinter as tk
+from datetime import datetime
+from logging.handlers import TimedRotatingFileHandler
 from tkinter import filedialog
+
+import logging
+# 确保log目录存在
+log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'log')
+os.makedirs(log_dir, exist_ok=True)
+
+# 动态生成日志文件名，包含日期
+now = datetime.now()
+log_file_path = os.path.join(log_dir, f'{now.strftime("%Y-%m-%d")}.log')
+
+# 创建一个logger
+logger = logging.getLogger("GLOBAL")
+logger.setLevel(logging.ERROR)  # 设置logger级别
+
+# 定义日志格式
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
+# 创建并添加FileHandler
+file_handler = logging.FileHandler(log_file_path, mode='a', encoding='utf-8')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+# 创建并添加StreamHandler（输出到控制台）
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(formatter)
+logger.addHandler(stream_handler)
 
 
 def extract_relative_path(full_path):
     drive, tail = os.path.splitdrive(full_path)
-    return os.path.relpath(tail, os.environ['USERPROFILE'])
+    try:
+        return os.path.relpath(tail, os.environ['USERPROFILE'])
+    except ValueError as e:
+        logging.error(f"Error calculating relative path: {e}")
+        raise
 
 
 def copy_directory_structure(source_rel_path, target_base_path):
     source_full_path = os.path.join(os.environ['USERPROFILE'], source_rel_path)
     target_full_path = os.path.join(target_base_path, source_rel_path)
-    os.makedirs(target_full_path, exist_ok=True)
-    shutil.copytree(source_full_path, target_full_path, dirs_exist_ok=True)
+    try:
+        os.makedirs(target_full_path, exist_ok=True)
+        shutil.copytree(source_full_path, target_full_path, dirs_exist_ok=True)
+    except shutil.Error as e:
+        logging.error(f"Error copying directory structure: {e}")
+        raise
+    except OSError as e:
+        logging.error(f"OS error during copy operation: {e}")
+        raise
 
 
 def create_copy_batch_file(src_folder, dst_folder, batch_file_path):
-    with open(batch_file_path, 'w') as f:
-        f.write(f'@echo off\n')
-        f.write(f'robocopy "{src_folder}" "{dst_folder}" /MIR\n')
+    try:
+        with open(batch_file_path, 'w') as f:
+            f.write(f'@echo off\n')
+            f.write(f'robocopy "{src_folder}" "{dst_folder}" /MIR\n')
+    except IOError as e:
+        logging.error(f"IO error creating batch file: {e}")
+        raise
 
 
 def get_paths(root):
@@ -38,21 +81,29 @@ def get_paths(root):
         source_path = source_path_entry.get()
         target_path = target_path_entry.get()
         if source_path and target_path:
-            # 清空输入框
-            source_path_entry.delete(0, tk.END)
-            target_path_entry.delete(0, tk.END)
+            try:
+                # 改变当前工作目录为 source_path
+                os.chdir(source_path)
 
-            # 执行复制和批处理文件创建逻辑
-            rel_path = extract_relative_path(source_path)
-            copy_directory_structure(rel_path, target_path)
-            batch_file_path = os.path.join(target_path, 'copy_to_user_profile.bat')
-            create_copy_batch_file(os.path.join(target_path, rel_path),
-                                   os.path.join(os.environ['USERPROFILE'], rel_path),
-                                   batch_file_path)
+                # 清空输入框
+                source_path_entry.delete(0, tk.END)
+                target_path_entry.delete(0, tk.END)
 
-            # 显示成功消息
-            result_label.config(text="Script executed successfully.")
-            root.update_idletasks()  # 更新GUI显示
+                # 执行复制和批处理文件创建逻辑
+                rel_path = extract_relative_path(source_path)
+                print(rel_path)
+                copy_directory_structure(rel_path, target_path)
+                batch_file_path = os.path.join(target_path, 'copy_to_user_profile.bat')
+                create_copy_batch_file(os.path.join(target_path, rel_path),
+                                       os.path.join(os.environ['USERPROFILE'], rel_path),
+                                       batch_file_path)
+
+                # 显示成功消息
+                result_label.config(text="Script executed successfully.")
+                root.update_idletasks()  # 更新GUI显示
+            except Exception as e:
+                result_label.config(text=f"An error occurred: {str(e)}")
+                root.update_idletasks()
 
     # GUI elements
     source_label = tk.Label(root, text="Source Directory:")
