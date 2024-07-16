@@ -58,11 +58,28 @@ def copy_directory_structure(source_rel_path, target_base_path):
 
 def create_copy_batch_file(src_folder, dst_folder, batch_file_path):
     try:
-        with open(batch_file_path, 'w') as f:
-            f.write(f'@echo off\n')
-            f.write(f'robocopy "{src_folder}" "{dst_folder}" /MIR\n')
+        # 直接在批处理文件中使用宏，不解析完整路径
+        src_folder_macro = '.\\appdata'  # .. 表示上级目录，但在这里是同级目录
+        dst_folder_macro = '%UserProfile%\\appdata'
+
+        batch_file_content = f'''@echo off
+        rem Use relative path
+        set "SRC={src_folder_macro}"
+
+        rem Target directory uses environment variables
+        set "DST={dst_folder_macro}"
+
+        robocopy "%SRC%" "%DST%" /E /R:100000 /W:30
+
+        '''
+
+        with open(batch_file_path, 'w', encoding='cp1252') as f:
+            f.write(batch_file_content)
     except IOError as e:
         logging.error(f"IO error creating batch file: {e}")
+        raise
+    except Exception as e:
+        logging.error(f"Unexpected error creating batch file: {e}")
         raise
 
 
